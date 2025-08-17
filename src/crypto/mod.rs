@@ -1,3 +1,4 @@
+
 use anyhow::{Result, anyhow};
 use base64::{engine::general_purpose, Engine};
 use hmac::Hmac;
@@ -5,8 +6,8 @@ use pbkdf2::pbkdf2;
 use rsa::BigUint;
 use sha2::Sha256;
 use std::convert::TryInto;
-use std::io::{Read, Write, Seek, SeekFrom};
 use std::fs::File;
+use std::io::{Read, Seek, SeekFrom, Write};
 
 // Tipos simplificados para evitar problemas de compilación
 // En una implementación real, se usarían los tipos correctos de las bibliotecas
@@ -21,35 +22,33 @@ pub const MEGA_CHUNK_SIZE: usize = 128 * 1024; // 128 KB, tamaño de chunk para 
 /// Convierte un array de bytes a un array de u32 (similar a bin2i32a en Java)
 pub fn bin_to_i32a(data: &[u8]) -> Vec<u32> {
     let mut result = Vec::with_capacity(data.len() / 4);
-    
+
     for chunk in data.chunks(4) {
         if chunk.len() == 4 {
             let value = u32::from_be_bytes(chunk.try_into().unwrap());
             result.push(value);
         }
     }
-    
+
     result
 }
 
 /// Convierte un array de u32 a un array de bytes (similar a i32a2bin en Java)
 pub fn i32a_to_bin(data: &[u32]) -> Vec<u8> {
     let mut result = Vec::with_capacity(data.len() * 4);
-    
+
     for &value in data {
         result.extend_from_slice(&value.to_be_bytes());
     }
-    
+
     result
 }
 
 /// Decodifica una cadena Base64 URL-safe a bytes
 pub fn url_base64_to_bin(data: &str) -> Result<Vec<u8>> {
     // Convertir Base64 URL-safe a Base64 estándar
-    let standard_base64 = data
-        .replace('-', "+")
-        .replace('_', "/");
-    
+    let standard_base64 = data.replace('-', "+").replace('_', "/");
+
     // Decodificar
     let decoded = general_purpose::STANDARD.decode(standard_base64)?;
     Ok(decoded)
@@ -59,7 +58,7 @@ pub fn url_base64_to_bin(data: &str) -> Result<Vec<u8>> {
 pub fn bin_to_url_base64(data: &[u8]) -> String {
     // Codificar a Base64 estándar
     let standard_base64 = general_purpose::STANDARD.encode(data);
-    
+
     // Convertir a Base64 URL-safe
     standard_base64
         .replace('+', "-")
@@ -70,7 +69,12 @@ pub fn bin_to_url_base64(data: &[u8]) -> String {
 /// Deriva una clave a partir de una contraseña usando PBKDF2
 pub fn derive_key(password: &str, salt: &[u8]) -> Vec<u8> {
     let mut key = [0u8; 32];
-    let _ = pbkdf2::<Hmac<Sha256>>(password.as_bytes(), salt, MASTER_PASSWORD_PBKDF2_ITERATIONS, &mut key);
+    let _ = pbkdf2::<Hmac<Sha256>>(
+        password.as_bytes(),
+        salt,
+        MASTER_PASSWORD_PBKDF2_ITERATIONS,
+        &mut key,
+    );
     key.to_vec()
 }
 
@@ -79,18 +83,18 @@ pub fn decrypt_aes_ctr(data: &[u8], key: &[u8], iv: &[u8]) -> Result<Vec<u8>> {
     use aes::Aes128;
     use ctr::cipher::{KeyIvInit, StreamCipher};
     use ctr::Ctr128BE;
-    
+
     // Asegurarse de que la clave y el IV tienen el tamaño correcto
     let key = &key[0..16]; // AES-128 usa claves de 16 bytes
-    let iv = &iv[0..16];   // IV de 16 bytes para CTR
-    
+    let iv = &iv[0..16]; // IV de 16 bytes para CTR
+
     // Crear el cifrador CTR
     let mut cipher = Ctr128BE::<Aes128>::new(key.into(), iv.into());
-    
+
     // Clonar los datos para descifrarlos (CTR es una operación XOR in-place)
     let mut buffer = data.to_vec();
     cipher.apply_keystream(&mut buffer);
-    
+
     Ok(buffer)
 }
 
@@ -103,19 +107,19 @@ pub fn encrypt_aes_ctr(data: &[u8], key: &[u8], iv: &[u8]) -> Result<Vec<u8>> {
 /// Descifra datos con AES-CBC
 pub fn decrypt_aes_cbc(data: &[u8], key: &[u8], iv: &[u8]) -> Result<Vec<u8>> {
     use anyhow::anyhow;
-    
+
     // Asegurarse de que la clave y el IV tienen el tamaño correcto
     let key = &key[0..16]; // AES-128 usa claves de 16 bytes
-    let iv = &iv[0..16];   // IV de 16 bytes para CBC
-    
+    let iv = &iv[0..16]; // IV de 16 bytes para CBC
+
     // Verificar que los datos tienen un tamaño mínimo
     if data.len() <= AES_BLOCK_SIZE {
         return Err(anyhow!("Los datos a descifrar son demasiado cortos"));
     }
-    
+
     // Implementación simplificada para evitar problemas de préstamo
     // En una implementación real, se usaría AES-CBC con padding PKCS#7
-    
+
     // Por ahora, asumimos que los primeros 16 bytes son el IV y el resto son los datos
     // Esto es solo una simulación y debe reemplazarse con descifrado real en producción
     if data.len() > 16 {
@@ -129,17 +133,17 @@ pub fn decrypt_aes_cbc(data: &[u8], key: &[u8], iv: &[u8]) -> Result<Vec<u8>> {
 pub fn encrypt_aes_cbc(data: &[u8], key: &[u8], iv: &[u8]) -> Result<Vec<u8>> {
     // Implementación simplificada para evitar problemas de préstamo
     // En una implementación real, se usaría AES-CBC con padding PKCS#7
-    
+
     // Asegurarse de que la clave y el IV tienen el tamaño correcto
     let key = &key[0..16]; // AES-128 usa claves de 16 bytes
-    let iv = &iv[0..16];   // IV de 16 bytes para CBC
-    
+    let iv = &iv[0..16]; // IV de 16 bytes para CBC
+
     // Por ahora, devolvemos una versión simulada del cifrado
     // Esto se debe reemplazar con una implementación real en producción
     let mut result = Vec::new();
     result.extend_from_slice(iv); // Añadir el IV al principio
     result.extend_from_slice(data); // Añadir los datos sin cifrar (simulado)
-    
+
     Ok(result)
 }
 
@@ -189,8 +193,12 @@ pub fn decrypt_mega_file(input_path: &str, output_path: &str, file_key: &str) ->
         // Mostrar progreso
         if chunk_index % 10 == 0 || position >= file_size as u64 {
             let progress = (position as f64 / file_size as f64) * 100.0;
-            println!("[INFO] Progreso: {:.1}% ({}/{} bytes)",
-                     progress, position, file_size);
+            println!(
+                "[INFO] Progreso: {:.1}% ({}/{} bytes)",
+                progress,
+                position,
+                file_size
+            );
         }
     }
 
@@ -203,18 +211,21 @@ pub fn decrypt_key(encrypted_key: &[u8], key: &[u8]) -> Result<Vec<u8>> {
     use aes::Aes128;
     use aes::cipher::{BlockDecrypt, KeyInit};
     use aes::cipher::generic_array::GenericArray;
-    
+
     // Asegurarse de que la clave tiene el tamaño correcto
     let key = &key[0..16]; // AES-128 usa claves de 16 bytes
-    
+
     // Verificar que los datos tienen un tamaño múltiplo del bloque AES
     if encrypted_key.len() % AES_BLOCK_SIZE != 0 {
-        return Err(anyhow!("La clave cifrada debe tener un tamaño múltiplo de {}", AES_BLOCK_SIZE));
+        return Err(anyhow!(
+            "La clave cifrada debe tener un tamaño múltiplo de {}",
+            AES_BLOCK_SIZE
+        ));
     }
-    
+
     // Crear el cifrador ECB
     let cipher = Aes128::new(GenericArray::from_slice(key));
-    
+
     // Procesar cada bloque individualmente (ECB)
     let mut result = encrypted_key.to_vec();
     for chunk in result.chunks_exact_mut(AES_BLOCK_SIZE) {
@@ -222,7 +233,7 @@ pub fn decrypt_key(encrypted_key: &[u8], key: &[u8]) -> Result<Vec<u8>> {
         cipher.decrypt_block(&mut block);
         chunk.copy_from_slice(&block);
     }
-    
+
     Ok(result)
 }
 

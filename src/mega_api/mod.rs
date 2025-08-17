@@ -1,7 +1,10 @@
+
 pub mod session;
 
 use crate::core::FileMetadata;
+use crate::crypto;
 use anyhow::Result;
+use log::{debug, error, info, warn};
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::json;
@@ -17,6 +20,7 @@ struct MegaFileAttribute {
 struct MegaFileResponse {
     s: u64,
     at: String,
+    k: String,
 }
 
 pub struct MegaApiClient {
@@ -34,7 +38,7 @@ impl MegaApiClient {
 
     /// Obtiene la URL de descarga para un archivo
     pub async fn get_download_url(&self, file_id: &str) -> Result<String> {
-        println!("[DEBUG] Obteniendo URL de descarga para el archivo: {}", file_id);
+        info!("Obteniendo URL de descarga para el archivo: {}", file_id);
 
         let request = json!({
             "a": "g",
@@ -50,25 +54,35 @@ impl MegaApiClient {
             .post(&url)
             .json(&request)
             .send()
-            .await?
-            .json::<serde_json::Value>()
             .await?;
 
-        if let Some(download_data) = response.get("g") {
+        if !response.status().is_success() {
+            error!("Error al obtener la URL de descarga: {}", response.status());
+            return Err(anyhow::anyhow!(
+                "Error al obtener la URL de descarga: {}",
+                response.status()
+            ));
+        }
+
+        let response_json = response.json::<serde_json::Value>().await?;
+
+        if let Some(download_data) = response_json.get("g") {
             if let Some(download_url) = download_data.as_str() {
-                println!("[DEBUG] URL de descarga: {}", download_url);
+                info!("URL de descarga obtenida: {}", download_url);
                 Ok(download_url.to_string())
             } else {
+                warn!("No se pudo obtener la URL de descarga del JSON de respuesta");
                 Err(anyhow::anyhow!("No se pudo obtener la URL de descarga"))
             }
         } else {
+            warn!("No se pudo obtener la URL de descarga del JSON de respuesta");
             Err(anyhow::anyhow!("No se pudo obtener la URL de descarga"))
         }
     }
 
     /// Obtiene información de un archivo
     pub async fn get_file_info(&self, file_id: &str) -> Result<FileMetadata> {
-        println!("[DEBUG] Obteniendo información del archivo: {}", file_id);
+        info!("Obteniendo información del archivo: {}", file_id);
 
         let request = json!({
             "a": "g",
@@ -83,30 +97,41 @@ impl MegaApiClient {
             .post(&url)
             .json(&request)
             .send()
-            .await?
-            .json::<Vec<MegaFileResponse>>()
             .await?;
 
-        if let Some(file_response) = response.get(0) {
-            // The file attributes are encrypted and base64 encoded.
-            // let key = crate::crypto::url_base64_to_bin(&self.session.master_key.as_ref().unwrap().iter().map(|&c| c as u8).collect::<Vec<u8>>().iter().map(|&c| c as char).collect::<String>())?;
-            // let decrypted_attributes =
-            //     crate::crypto::decrypt_file_attributes(&file_response.at, &key)?;
-            // let attributes: MegaFileAttribute = serde_json::from_str(&decrypted_attributes)?;
+        if !response.status().is_success() {
+            error!("Error al obtener la información del archivo: {}", response.status());
+            return Err(anyhow::anyhow!(
+                "Error al obtener la información del archivo: {}",
+                response.status()
+            ));
+        }
+
+        let response_json = response.json::<Vec<MegaFileResponse>>().await?;
+
+        if let Some(file_response) = response_json.get(0) {
+            let key_str = file_response.k.split(':').nth(1).unwrap_or("");
+            let key = crypto::url_base64_to_bin(key_str)?;
+
+            let decrypted_attributes =
+                crypto::decrypt_file_attributes(&file_response.at, &key)?;
+            let attributes: MegaFileAttribute = serde_json::from_str(&decrypted_attributes)?;
 
             let file_metadata = FileMetadata {
-                name: "decrypted_file_name".to_string(), //attributes.n,
+                name: attributes.n,
                 size: file_response.s,
-                key: "placeholder_key".to_string(),
+                key: file_response.k.clone(),
             };
 
-            println!(
-                "[DEBUG] Información del archivo: {}, tamaño: {} bytes",
-                file_metadata.name, file_metadata.size
+            info!(
+                "Información del archivo obtenida: {}, tamaño: {} bytes",
+                file_metadata.name,
+                file_metadata.size
             );
 
             Ok(file_metadata)
         } else {
+            warn!("No se pudo obtener la información del archivo del JSON de respuesta");
             Err(anyhow::anyhow!("No se pudo obtener la información del archivo"))
         }
     }

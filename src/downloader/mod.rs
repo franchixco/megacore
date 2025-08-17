@@ -194,25 +194,119 @@ impl Downloader {
 
     /// Analiza la URL de MEGA para extraer información
     pub fn parse_url(&mut self) -> Result<()> {
-        // ... (código sin cambios)
+        info!("Analizando URL: {}", self.download.url);
+        // Analizar la URL para extraer file_id y file_key
+        // Formatos soportados:
+        // - https://mega.nz/file/FILE_ID#FILE_KEY
+        // - https://mega.nz/#!FILE_ID!FILE_KEY
+
+        let url = self.download.url.as_str();
+
+        // Extraer file_id y file_key
+        if url.contains("mega.nz/file/") {
+            // Formato nuevo: https://mega.nz/file/FILE_ID#FILE_KEY
+            if let Some(file_part) = url.split('/').last() {
+                if let Some(hash_pos) = file_part.find('#') {
+                    let file_id = &file_part[..hash_pos];
+                    let file_key = &file_part[hash_pos + 1..];
+
+                    self.download.file_metadata = Some(FileMetadata {
+                        name: format!("downloaded_file_{}", file_id),
+                        size: 0, // Se obtendrá después
+                        key: file_key.to_string(),
+                    });
+                    info!("URL analizada correctamente.");
+                    return Ok(());
+                }
+            }
+        } else if url.contains("mega.nz/#!") {
+            // Formato antiguo: https://mega.nz/#!FILE_ID!FILE_KEY
+            if let Some(exclamation_parts) = url.split("#!").nth(1) {
+                let parts: Vec<&str> = exclamation_parts.split('!').collect();
+                if parts.len() >= 2 {
+                    let file_id = parts[0];
+                    let file_key = parts[1];
+
+                    self.download.file_metadata = Some(FileMetadata {
+                        name: format!("downloaded_file_{}", file_id),
+                        size: 0, // Se obtendrá después
+                        key: file_key.to_string(),
+                    });
+                    info!("URL analizada correctamente.");
+                    return Ok(());
+                }
+            }
+        }
+        warn!("URL de MEGA no válida o no soportada: {}", self.download.url);
+        Err(anyhow::anyhow!("URL de MEGA no válida o no soportada"))
     }
 
     /// Obtiene la información del archivo (tamaño, nombre, etc.)
     pub async fn get_file_info(&mut self) -> Result<()> {
-        // ... (código sin cambios)
+        info!("Obteniendo información del archivo...");
+        // Verificar que tenemos un cliente de API o crear uno anónimo
+        if self.api_client.is_none() {
+            info!("No se ha proporcionado un cliente de API, creando uno anónimo...");
+            let session = Session::new();
+            self.api_client = Some(MegaApiClient::new(session));
+        }
+
+        // Extraer el file_id de la URL si no lo hemos hecho ya
+        if self.download.file_metadata.is_none() {
+            self.parse_url()?;
+        }
+
+        let file_metadata = self.download.file_metadata.as_mut().unwrap();
+
+        // Extraer el file_id del nombre temporal
+        let file_id = file_metadata
+            .name
+            .strip_prefix("downloaded_file_")
+            .ok_or_else(|| anyhow::anyhow!("No se pudo extraer el file_id"))?;
+
+        // Obtener información del archivo usando el cliente de la API de MEGA
+        if let Some(api_client) = &self.api_client {
+            info!(
+                "Obteniendo información del archivo desde la API de MEGA: {}",
+                file_id
+            );
+
+            // En una implementación real, obtendríamos la información del archivo
+            // a través de la API de MEGA
+            let api_file_info = api_client.get_file_info(file_id).await?;
+
+            // Actualizar la información del archivo con los datos obtenidos
+            file_metadata.name = api_file_info.name;
+            file_metadata.size = api_file_info.size;
+
+            info!(
+                "Información obtenida: {}, tamaño: {} bytes",
+                file_metadata.name,
+                file_metadata.size
+            );
+        } else {
+            // Si no hay cliente de API disponible, usar valores por defecto
+            warn!("No hay cliente de API disponible, usando valores por defecto");
+            file_metadata.size = 1024 * 1024 * 10; // 10 MB
+        }
+
+        Ok(())
     }
 
     /// Descarga el archivo
     pub async fn download(&mut self) -> Result<()> {
+        info!("Iniciando descarga para: {}", self.download.url);
         self.download.status = DownloadStatus::Downloading;
 
         // Verificar que tenemos toda la información necesaria
         if self.download.file_metadata.is_none() {
             if let Err(e) = self.parse_url() {
+                error!("Error al analizar la URL: {}", e);
                 self.download.status = DownloadStatus::Failed(e.to_string());
                 return Err(e);
             }
             if let Err(e) = self.get_file_info().await {
+                error!("Error al obtener la información del archivo: {}", e);
                 self.download.status = DownloadStatus::Failed(e.to_string());
                 return Err(e);
             }
@@ -275,6 +369,7 @@ impl Downloader {
                     url
                 }
                 Err(e) => {
+                    error!("Error al obtener la URL de descarga: {}", e);
                     self.download.status = DownloadStatus::Failed(e.to_string());
                     return Err(e);
                 }
@@ -442,10 +537,12 @@ impl Downloader {
         );
 
         if let Err(e) = file_assembler.assemble_and_decrypt() {
+            error!("Error al ensamblar y descifrar el archivo: {}", e);
             self.download.status = DownloadStatus::Failed(e.to_string());
             return Err(e);
         }
 
+        info!("Descarga completada para: {}", self.download.url);
         self.download.status = DownloadStatus::Completed;
         Ok(())
     }
