@@ -273,7 +273,7 @@ impl Downloader {
 
             // En una implementación real, obtendríamos la información del archivo
             // a través de la API de MEGA
-            let api_file_info = api_client.get_file_info(file_id).await?;
+            let api_file_info = api_client.get_file_info(file_id, &file_metadata.key).await?;
 
             // Actualizar la información del archivo con los datos obtenidos
             file_metadata.name = api_file_info.name;

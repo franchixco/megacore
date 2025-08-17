@@ -105,28 +105,24 @@ pub fn encrypt_aes_ctr(data: &[u8], key: &[u8], iv: &[u8]) -> Result<Vec<u8>> {
 }
 
 /// Descifra datos con AES-CBC
+use aes::Aes128;
+use block_modes::{BlockMode, Cbc};
+use anyhow::{Result, anyhow};
+
 pub fn decrypt_aes_cbc(data: &[u8], key: &[u8], iv: &[u8]) -> Result<Vec<u8>> {
-    use anyhow::anyhow;
+    type Aes128Cbc = Cbc<Aes128>;
 
     // Asegurarse de que la clave y el IV tienen el tamaño correcto
     let key = &key[0..16]; // AES-128 usa claves de 16 bytes
     let iv = &iv[0..16]; // IV de 16 bytes para CBC
 
-    // Verificar que los datos tienen un tamaño mínimo
-    if data.len() <= AES_BLOCK_SIZE {
-        return Err(anyhow!("Los datos a descifrar son demasiado cortos"));
-    }
+    let cipher = Aes128Cbc::new_from_slices(key, iv)
+        .map_err(|e| anyhow!("Error al crear el cifrador AES-CBC: {}", e))?;
 
-    // Implementación simplificada para evitar problemas de préstamo
-    // En una implementación real, se usaría AES-CBC con padding PKCS#7
+    let decrypted_data = cipher.decrypt_vec(data)
+        .map_err(|e| anyhow!("Error al descifrar datos con AES-CBC: {}", e))?;
 
-    // Por ahora, asumimos que los primeros 16 bytes son el IV y el resto son los datos
-    // Esto es solo una simulación y debe reemplazarse con descifrado real en producción
-    if data.len() > 16 {
-        Ok(data[16..].to_vec())
-    } else {
-        Ok(Vec::new())
-    }
+    Ok(decrypted_data)
 }
 
 /// Cifra datos con AES-CBC
@@ -248,6 +244,7 @@ pub fn rsa_decrypt(data: &[u8], _p: &BigUint, _q: &BigUint, _d: &BigUint) -> Res
 pub fn decrypt_file_attributes(encrypted_attributes: &str, key: &[u8]) -> Result<String> {
     let encrypted_attributes = url_base64_to_bin(encrypted_attributes)?;
     let decrypted_attributes = decrypt_aes_cbc(&encrypted_attributes, key, &[0; 16])?;
+    dbg!(&decrypted_attributes);
     let decrypted_attributes = String::from_utf8(decrypted_attributes)?;
     let decrypted_attributes = decrypted_attributes.trim_start_matches("MEGA");
     let decrypted_attributes = decrypted_attributes.trim_end_matches('\0');

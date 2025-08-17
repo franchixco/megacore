@@ -1,4 +1,3 @@
-
 pub mod session;
 
 use crate::core::FileMetadata;
@@ -20,7 +19,7 @@ struct MegaFileAttribute {
 struct MegaFileResponse {
     s: u64,
     at: String,
-    k: String,
+    k: Option<String>,
 }
 
 pub struct MegaApiClient {
@@ -81,7 +80,7 @@ impl MegaApiClient {
     }
 
     /// Obtiene información de un archivo
-    pub async fn get_file_info(&self, file_id: &str) -> Result<FileMetadata> {
+    pub async fn get_file_info(&self, file_id: &str, file_key: &str) -> Result<FileMetadata> {
         info!("Obteniendo información del archivo: {}", file_id);
 
         let request = json!({
@@ -110,17 +109,18 @@ impl MegaApiClient {
         let response_json = response.json::<Vec<MegaFileResponse>>().await?;
 
         if let Some(file_response) = response_json.get(0) {
-            let key_str = file_response.k.split(':').nth(1).unwrap_or("");
-            let key = crypto::url_base64_to_bin(key_str)?;
+            let decoded_file_key = crypto::url_base64_to_bin(file_key)?;
 
-            let decrypted_attributes =
-                crypto::decrypt_file_attributes(&file_response.at, &key)?;
+            dbg!(&file_response.at);
+            dbg!(&decoded_file_key);
+            let decrypted_attributes = crypto::decrypt_file_attributes(&file_response.at, &decoded_file_key)?;
+            dbg!(&decrypted_attributes);
             let attributes: MegaFileAttribute = serde_json::from_str(&decrypted_attributes)?;
 
             let file_metadata = FileMetadata {
                 name: attributes.n,
                 size: file_response.s,
-                key: file_response.k.clone(),
+                key: file_response.k.clone().unwrap_or_default(),
             };
 
             info!(

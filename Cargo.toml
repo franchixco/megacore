@@ -23,3 +23,4 @@ tokio = { version = "1.37", features = ["full"] }
 reqwest = { version = "0.12", features = ["json", "gzip", "stream", "rustls-tls"] }
 log = "0.4"
 env_logger = "0.10"
+block-modes = "0.9"
