@@ -1,5 +1,6 @@
 
 use anyhow::Result;
+use rand::rngs::OsRng;
 use rand::Rng;
 
 #[derive(Debug, Clone, Default)]
@@ -22,7 +23,7 @@ pub struct Session {
 
 impl Session {
     pub fn new() -> Self {
-        let mut rng = rand::thread_rng();
+        let mut rng = OsRng;
         let seq_no = rng.gen::<u64>() & 0xffffffff;
         let req_id = Self::gen_id(10);
 
@@ -45,7 +46,7 @@ impl Session {
     }
 
     fn gen_id(length: usize) -> String {
-        let mut rng = rand::thread_rng();
+        let mut rng = OsRng;
         let chars: Vec<char> =
             "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
                 .chars()
@@ -89,5 +90,33 @@ impl Session {
         // Aquí se obtendrían los IDs de carpetas importantes como root, inbox, etc.
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_gen_id_length() {
+        let length = 10;
+        let id = Session::gen_id(length);
+        assert_eq!(id.len(), length);
+    }
+
+    #[test]
+    fn test_gen_id_charset() {
+        let length = 100;
+        let id = Session::gen_id(length);
+        let chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        for c in id.chars() {
+            assert!(chars.contains(c));
+        }
+    }
+
+    #[test]
+    fn test_session_new_initializes_req_id() {
+        let session = Session::new();
+        assert_eq!(session.req_id.len(), 10);
     }
 }
