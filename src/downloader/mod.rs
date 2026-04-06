@@ -256,7 +256,8 @@ impl Downloader {
             self.parse_url()?;
         }
 
-        let file_metadata = self.download.file_metadata.as_mut().unwrap();
+        let file_metadata = self.download.file_metadata.as_mut()
+            .ok_or_else(|| anyhow::anyhow!("File metadata is missing"))?;
 
         // Extraer el file_id del nombre temporal
         let file_id = file_metadata
@@ -312,7 +313,8 @@ impl Downloader {
             }
         }
 
-        let file_metadata = self.download.file_metadata.as_ref().unwrap();
+        let file_metadata = self.download.file_metadata.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("File metadata is missing"))?;
         let file_size = file_metadata.size;
         let temp_file_path_str = Path::new(&self.download.download_path)
             .join(&format!("{}.mctemp", file_metadata.name))

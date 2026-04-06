@@ -25,6 +25,7 @@ pub fn bin_to_i32a(data: &[u8]) -> Vec<u32> {
 
     for chunk in data.chunks(4) {
         if chunk.len() == 4 {
+            // Safe to unwrap since we checked chunk.len() == 4
             let value = u32::from_be_bytes(chunk.try_into().unwrap());
             result.push(value);
         }
