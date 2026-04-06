@@ -46,24 +46,15 @@ pub fn i32a_to_bin(data: &[u32]) -> Vec<u8> {
 
 /// Decodifica una cadena Base64 URL-safe a bytes
 pub fn url_base64_to_bin(data: &str) -> Result<Vec<u8>> {
-    // Convertir Base64 URL-safe a Base64 estándar
-    let standard_base64 = data.replace('-', "+").replace('_', "/");
-
-    // Decodificar
-    let decoded = general_purpose::STANDARD.decode(standard_base64)?;
+    // Decodificar usando el motor URL_SAFE_NO_PAD que evita reemplazos de strings
+    let decoded = general_purpose::URL_SAFE_NO_PAD.decode(data)?;
     Ok(decoded)
 }
 
 /// Codifica bytes a una cadena Base64 URL-safe
 pub fn bin_to_url_base64(data: &[u8]) -> String {
-    // Codificar a Base64 estándar
-    let standard_base64 = general_purpose::STANDARD.encode(data);
-
-    // Convertir a Base64 URL-safe
-    standard_base64
-        .replace('+', "-")
-        .replace('/', "_")
-        .replace('=', "")
+    // Codificar a Base64 URL-safe sin padding directamente
+    general_purpose::URL_SAFE_NO_PAD.encode(data)
 }
 
 /// Deriva una clave a partir de una contraseña usando PBKDF2
