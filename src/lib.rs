@@ -28,22 +28,40 @@ impl MegaDownloader {
             progress: 0,
             status: DownloadStatus::Pending,
         };
-        self.download_manager.lock().unwrap().add_download(download);
+        self.download_manager
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .add_download(download);
     }
 
     pub fn get_downloads(&self) -> Vec<Download> {
-        self.download_manager.lock().unwrap().queue.clone().into_iter().collect()
+        self.download_manager
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .queue
+            .clone()
+            .into_iter()
+            .collect()
     }
 
     pub fn pause_download(&self, url: &str) {
-        self.download_manager.lock().unwrap().pause_download(url);
+        self.download_manager
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .pause_download(url);
     }
 
     pub fn resume_download(&self, url: &str) {
-        self.download_manager.lock().unwrap().resume_download(url);
+        self.download_manager
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .resume_download(url);
     }
 
     pub fn cancel_download(&self, url: &str) {
-        self.download_manager.lock().unwrap().cancel_download(url);
+        self.download_manager
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .cancel_download(url);
     }
 }
