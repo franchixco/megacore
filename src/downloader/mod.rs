@@ -256,38 +256,40 @@ impl Downloader {
             self.parse_url()?;
         }
 
-        let file_metadata = self.download.file_metadata.as_mut().unwrap();
+        if let Some(file_metadata) = self.download.file_metadata.as_mut() {
+            // Extraer el file_id del nombre temporal
+            let file_id = file_metadata
+                .name
+                .strip_prefix("downloaded_file_")
+                .ok_or_else(|| anyhow::anyhow!("No se pudo extraer el file_id"))?;
 
-        // Extraer el file_id del nombre temporal
-        let file_id = file_metadata
-            .name
-            .strip_prefix("downloaded_file_")
-            .ok_or_else(|| anyhow::anyhow!("No se pudo extraer el file_id"))?;
+            // Obtener información del archivo usando el cliente de la API de MEGA
+            if let Some(api_client) = &self.api_client {
+                info!(
+                    "Obteniendo información del archivo desde la API de MEGA: {}",
+                    file_id
+                );
 
-        // Obtener información del archivo usando el cliente de la API de MEGA
-        if let Some(api_client) = &self.api_client {
-            info!(
-                "Obteniendo información del archivo desde la API de MEGA: {}",
-                file_id
-            );
+                // En una implementación real, obtendríamos la información del archivo
+                // a través de la API de MEGA
+                let api_file_info = api_client.get_file_info(file_id, &file_metadata.key).await?;
 
-            // En una implementación real, obtendríamos la información del archivo
-            // a través de la API de MEGA
-            let api_file_info = api_client.get_file_info(file_id, &file_metadata.key).await?;
+                // Actualizar la información del archivo con los datos obtenidos
+                file_metadata.name = api_file_info.name;
+                file_metadata.size = api_file_info.size;
 
-            // Actualizar la información del archivo con los datos obtenidos
-            file_metadata.name = api_file_info.name;
-            file_metadata.size = api_file_info.size;
-
-            info!(
-                "Información obtenida: {}, tamaño: {} bytes",
-                file_metadata.name,
-                file_metadata.size
-            );
+                info!(
+                    "Información obtenida: {}, tamaño: {} bytes",
+                    file_metadata.name,
+                    file_metadata.size
+                );
+            } else {
+                // Si no hay cliente de API disponible, usar valores por defecto
+                warn!("No hay cliente de API disponible, usando valores por defecto");
+                file_metadata.size = 1024 * 1024 * 10; // 10 MB
+            }
         } else {
-            // Si no hay cliente de API disponible, usar valores por defecto
-            warn!("No hay cliente de API disponible, usando valores por defecto");
-            file_metadata.size = 1024 * 1024 * 10; // 10 MB
+            return Err(anyhow::anyhow!("No se pudo obtener la metadata del archivo"));
         }
 
         Ok(())
