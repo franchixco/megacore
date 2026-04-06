@@ -7,7 +7,7 @@ use rsa::BigUint;
 use sha2::Sha256;
 use std::convert::TryInto;
 use std::fs::File;
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::{Read, Write};
 
 // Tipos simplificados para evitar problemas de compilación
 // En una implementación real, se usarían los tipos correctos de las bibliotecas
@@ -106,23 +106,24 @@ pub fn encrypt_aes_ctr(data: &[u8], key: &[u8], iv: &[u8]) -> Result<Vec<u8>> {
 
 /// Descifra datos con AES-CBC
 use aes::Aes128;
-use block_modes::{BlockMode, Cbc};
-use anyhow::{Result, anyhow};
+use cbc::cipher::{BlockDecryptMut, KeyIvInit};
+use cbc::cipher::block_padding::Pkcs7;
 
 pub fn decrypt_aes_cbc(data: &[u8], key: &[u8], iv: &[u8]) -> Result<Vec<u8>> {
-    type Aes128Cbc = Cbc<Aes128>;
+    type Aes128CbcDec = cbc::Decryptor<Aes128>;
 
     // Asegurarse de que la clave y el IV tienen el tamaño correcto
     let key = &key[0..16]; // AES-128 usa claves de 16 bytes
     let iv = &iv[0..16]; // IV de 16 bytes para CBC
 
-    let cipher = Aes128Cbc::new_from_slices(key, iv)
+    let cipher = Aes128CbcDec::new_from_slices(key, iv)
         .map_err(|e| anyhow!("Error al crear el cifrador AES-CBC: {}", e))?;
 
-    let decrypted_data = cipher.decrypt_vec(data)
+    let mut buffer = data.to_vec();
+    let decrypted_data = cipher.decrypt_padded_mut::<Pkcs7>(&mut buffer)
         .map_err(|e| anyhow!("Error al descifrar datos con AES-CBC: {}", e))?;
 
-    Ok(decrypted_data)
+    Ok(decrypted_data.to_vec())
 }
 
 /// Cifra datos con AES-CBC

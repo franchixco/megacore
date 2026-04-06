@@ -448,7 +448,7 @@ impl Downloader {
         info!("Iniciando recepción de datos...");
 
         while let Some(chunk) = rx.recv().await {
-            if let Some(data) = &chunk.data {
+            if let Some(data) = chunk.data {
                 let chunk_size = data.len() as u64;
                 total_bytes_downloaded += chunk_size;
 

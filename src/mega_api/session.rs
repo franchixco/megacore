@@ -1,5 +1,6 @@
 
 use anyhow::Result;
+use log::info;
 use rand::rngs::OsRng;
 use rand::Rng;
 
@@ -58,7 +59,7 @@ impl Session {
 
     /// Inicializa la sesión
     pub async fn init(&mut self) -> Result<()> {
-        println!("[INFO] Inicializando sesión de MEGA...");
+        info!("Inicializando sesión de MEGA...");
 
         // Generar un nuevo ID de solicitud
         self.req_id = Self::gen_id(10);
@@ -68,7 +69,7 @@ impl Session {
         // como la versión de la API, etc.
 
         // Por ahora, simplemente simulamos una inicialización exitosa
-        println!("[INFO] Sesión inicializada correctamente");
+        info!("Sesión inicializada correctamente");
 
         Ok(())
     }
