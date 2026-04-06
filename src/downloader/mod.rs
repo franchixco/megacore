@@ -452,10 +452,18 @@ impl Downloader {
                 let chunk_size = data.len() as u64;
                 total_bytes_downloaded += chunk_size;
 
-                // Escribir el chunk en el archivo
-                let mut file = temp_file.lock().unwrap();
-                file.seek(io::SeekFrom::Start(chunk.start))?;
-                file.write_all(data)?;
+                // Escribir el chunk en el archivo de forma no bloqueante
+                let temp_file_clone = Arc::clone(&temp_file);
+                let start_pos = chunk.start;
+
+                task::spawn_blocking(move || -> Result<()> {
+                    let mut file = temp_file_clone.lock().map_err(|_| anyhow::anyhow!("Error al bloquear el archivo"))?;
+                    file.seek(io::SeekFrom::Start(start_pos))?;
+                    file.write_all(&data)?;
+                    Ok(())
+                })
+                .await
+                .map_err(|e| anyhow::anyhow!("Error en la tarea de escritura: {}", e))??;
 
                 // Calcular velocidad de descarga
                 let elapsed = last_progress_time.elapsed();
