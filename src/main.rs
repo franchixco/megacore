@@ -68,9 +68,13 @@ async fn main() -> anyhow::Result<()> {
                     // Usar la implementación real del downloader con la sesión de MEGA
                     let api_client = MegaApiClient::new(session);
                     let mut downloader =
-                        megacore::downloader::Downloader::new(download)
-                            .with_slots(slots)
-                            .with_api_client(api_client);
+                        match megacore::downloader::Downloader::new(download) {
+                            Ok(d) => d.with_slots(slots).with_api_client(api_client),
+                            Err(e) => {
+                                error!("Error al crear el downloader: {}", e);
+                                continue;
+                            }
+                        };
 
                     // Iniciar la descarga
                     info!("[megacore] Iniciando descarga...");

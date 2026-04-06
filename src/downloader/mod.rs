@@ -170,15 +170,15 @@ pub struct Downloader {
 }
 
 impl Downloader {
-    pub fn new(download: Download) -> Self {
-        let client = http::default_client("MegaBasterd Rust", 30);
+    pub fn new(download: Download) -> Result<Self> {
+        let client = http::default_client("MegaBasterd Rust", 30)?;
 
-        Self {
+        Ok(Self {
             download,
             slots: WORKERS_DEFAULT,
             client,
             api_client: None,
-        }
+        })
     }
 
     /// Establece el cliente de la API de MEGA
@@ -256,39 +256,40 @@ impl Downloader {
             self.parse_url()?;
         }
 
-        let file_metadata = self.download.file_metadata.as_mut()
-            .ok_or_else(|| anyhow::anyhow!("File metadata is missing"))?;
+        if let Some(file_metadata) = self.download.file_metadata.as_mut() {
+            // Extraer el file_id del nombre temporal
+            let file_id = file_metadata
+                .name
+                .strip_prefix("downloaded_file_")
+                .ok_or_else(|| anyhow::anyhow!("No se pudo extraer el file_id"))?;
 
-        // Extraer el file_id del nombre temporal
-        let file_id = file_metadata
-            .name
-            .strip_prefix("downloaded_file_")
-            .ok_or_else(|| anyhow::anyhow!("No se pudo extraer el file_id"))?;
+            // Obtener información del archivo usando el cliente de la API de MEGA
+            if let Some(api_client) = &self.api_client {
+                info!(
+                    "Obteniendo información del archivo desde la API de MEGA: {}",
+                    file_id
+                );
 
-        // Obtener información del archivo usando el cliente de la API de MEGA
-        if let Some(api_client) = &self.api_client {
-            info!(
-                "Obteniendo información del archivo desde la API de MEGA: {}",
-                file_id
-            );
+                // En una implementación real, obtendríamos la información del archivo
+                // a través de la API de MEGA
+                let api_file_info = api_client.get_file_info(file_id, &file_metadata.key).await?;
 
-            // En una implementación real, obtendríamos la información del archivo
-            // a través de la API de MEGA
-            let api_file_info = api_client.get_file_info(file_id, &file_metadata.key).await?;
+                // Actualizar la información del archivo con los datos obtenidos
+                file_metadata.name = api_file_info.name;
+                file_metadata.size = api_file_info.size;
 
-            // Actualizar la información del archivo con los datos obtenidos
-            file_metadata.name = api_file_info.name;
-            file_metadata.size = api_file_info.size;
-
-            info!(
-                "Información obtenida: {}, tamaño: {} bytes",
-                file_metadata.name,
-                file_metadata.size
-            );
+                info!(
+                    "Información obtenida: {}, tamaño: {} bytes",
+                    file_metadata.name,
+                    file_metadata.size
+                );
+            } else {
+                // Si no hay cliente de API disponible, usar valores por defecto
+                warn!("No hay cliente de API disponible, usando valores por defecto");
+                file_metadata.size = 1024 * 1024 * 10; // 10 MB
+            }
         } else {
-            // Si no hay cliente de API disponible, usar valores por defecto
-            warn!("No hay cliente de API disponible, usando valores por defecto");
-            file_metadata.size = 1024 * 1024 * 10; // 10 MB
+            return Err(anyhow::anyhow!("No se pudo obtener la metadata del archivo"));
         }
 
         Ok(())
@@ -313,8 +314,7 @@ impl Downloader {
             }
         }
 
-        let file_metadata = self.download.file_metadata.as_ref()
-            .ok_or_else(|| anyhow::anyhow!("File metadata is missing"))?;
+        let file_metadata = self.download.file_metadata.as_ref().unwrap();
         let file_size = file_metadata.size;
         let temp_file_path_str = Path::new(&self.download.download_path)
             .join(&format!("{}.mctemp", file_metadata.name))
@@ -331,6 +331,9 @@ impl Downloader {
 
         // Obtener la URL de descarga real de la API de MEGA
         let download_url = if let Some(api_client) = &self.api_client {
+        let file_metadata = self.download.file_metadata.as_mut()
+            .ok_or_else(|| anyhow::anyhow!("File metadata is missing"))?;
+
             // Extraer el file_id del nombre del archivo temporal
             // En una implementación real, esto vendría de los metadatos del archivo
             let file_id = if let Some(id) = file_metadata.name.strip_prefix("downloaded_file_") {
@@ -388,6 +391,14 @@ impl Downloader {
         let temp_file = Arc::new(Mutex::new(File::create(&temp_file_path_str)?));
 
         // Calcular el tamaño de cada chunk
+        let file_metadata = self.download.file_metadata.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("File metadata is missing"))?;
+        let file_size = file_metadata.size;
+        let temp_file_path_str = Path::new(&self.download.download_path)
+            .join(&format!("{}.mctemp", file_metadata.name))
+            .to_string_lossy()
+            .to_string();
+
         let chunk_size = (file_size / self.slots as u64).max(1024 * 1024); // Mínimo 1 MB por chunk
 
         // Crear los chunks
@@ -450,7 +461,7 @@ impl Downloader {
         info!("Iniciando recepción de datos...");
 
         while let Some(chunk) = rx.recv().await {
-            if let Some(data) = &chunk.data {
+            if let Some(data) = chunk.data {
                 let chunk_size = data.len() as u64;
                 total_bytes_downloaded += chunk_size;
 
@@ -546,10 +557,24 @@ impl Downloader {
             final_file_path_str,
         );
 
-        if let Err(e) = file_assembler.assemble_and_decrypt() {
-            error!("Error al ensamblar y descifrar el archivo: {}", e);
-            self.download.status = DownloadStatus::Failed(e.to_string());
-            return Err(e);
+        let assemble_result = task::spawn_blocking(move || {
+            file_assembler.assemble_and_decrypt()
+        })
+        .await;
+
+        match assemble_result {
+            Ok(Ok(_)) => {}
+            Ok(Err(e)) => {
+                error!("Error al ensamblar y descifrar el archivo: {}", e);
+                self.download.status = DownloadStatus::Failed(e.to_string());
+                return Err(e);
+            }
+            Err(e) => {
+                let err_msg = format!("Error en la tarea de ensamblado: {}", e);
+                error!("{}", err_msg);
+                self.download.status = DownloadStatus::Failed(err_msg.clone());
+                return Err(anyhow::anyhow!(err_msg));
+            }
         }
 
         info!("Descarga completada para: {}", self.download.url);
@@ -569,6 +594,6 @@ pub async fn download_file(url: &str, download_path: &str) -> Result<()> {
     };
     let session = Session::new();
     let api_client = MegaApiClient::new(session);
-    let mut downloader = Downloader::new(download).with_api_client(api_client);
+    let mut downloader = Downloader::new(download)?.with_api_client(api_client);
     downloader.download().await
 }

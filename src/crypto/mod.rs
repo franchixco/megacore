@@ -7,7 +7,7 @@ use rsa::BigUint;
 use sha2::Sha256;
 use std::convert::TryInto;
 use std::fs::File;
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::{Read, Write};
 
 // Tipos simplificados para evitar problemas de compilación
 // En una implementación real, se usarían los tipos correctos de las bibliotecas
@@ -47,24 +47,15 @@ pub fn i32a_to_bin(data: &[u32]) -> Vec<u8> {
 
 /// Decodifica una cadena Base64 URL-safe a bytes
 pub fn url_base64_to_bin(data: &str) -> Result<Vec<u8>> {
-    // Convertir Base64 URL-safe a Base64 estándar
-    let standard_base64 = data.replace('-', "+").replace('_', "/");
-
-    // Decodificar
-    let decoded = general_purpose::STANDARD.decode(standard_base64)?;
+    // Decodificar usando el motor URL_SAFE_NO_PAD que evita reemplazos de strings
+    let decoded = general_purpose::URL_SAFE_NO_PAD.decode(data)?;
     Ok(decoded)
 }
 
 /// Codifica bytes a una cadena Base64 URL-safe
 pub fn bin_to_url_base64(data: &[u8]) -> String {
-    // Codificar a Base64 estándar
-    let standard_base64 = general_purpose::STANDARD.encode(data);
-
-    // Convertir a Base64 URL-safe
-    standard_base64
-        .replace('+', "-")
-        .replace('/', "_")
-        .replace('=', "")
+    // Codificar a Base64 URL-safe sin padding directamente
+    general_purpose::URL_SAFE_NO_PAD.encode(data)
 }
 
 /// Deriva una clave a partir de una contraseña usando PBKDF2
@@ -107,23 +98,24 @@ pub fn encrypt_aes_ctr(data: &[u8], key: &[u8], iv: &[u8]) -> Result<Vec<u8>> {
 
 /// Descifra datos con AES-CBC
 use aes::Aes128;
-use block_modes::{BlockMode, Cbc};
-use anyhow::{Result, anyhow};
+use cbc::cipher::{BlockDecryptMut, KeyIvInit};
+use cbc::cipher::block_padding::Pkcs7;
 
 pub fn decrypt_aes_cbc(data: &[u8], key: &[u8], iv: &[u8]) -> Result<Vec<u8>> {
-    type Aes128Cbc = Cbc<Aes128>;
+    type Aes128CbcDec = cbc::Decryptor<Aes128>;
 
     // Asegurarse de que la clave y el IV tienen el tamaño correcto
     let key = &key[0..16]; // AES-128 usa claves de 16 bytes
     let iv = &iv[0..16]; // IV de 16 bytes para CBC
 
-    let cipher = Aes128Cbc::new_from_slices(key, iv)
+    let cipher = Aes128CbcDec::new_from_slices(key, iv)
         .map_err(|e| anyhow!("Error al crear el cifrador AES-CBC: {}", e))?;
 
-    let decrypted_data = cipher.decrypt_vec(data)
+    let mut buffer = data.to_vec();
+    let decrypted_data = cipher.decrypt_padded_mut::<Pkcs7>(&mut buffer)
         .map_err(|e| anyhow!("Error al descifrar datos con AES-CBC: {}", e))?;
 
-    Ok(decrypted_data)
+    Ok(decrypted_data.to_vec())
 }
 
 /// Cifra datos con AES-CBC
@@ -245,7 +237,6 @@ pub fn rsa_decrypt(data: &[u8], _p: &BigUint, _q: &BigUint, _d: &BigUint) -> Res
 pub fn decrypt_file_attributes(encrypted_attributes: &str, key: &[u8]) -> Result<String> {
     let encrypted_attributes = url_base64_to_bin(encrypted_attributes)?;
     let decrypted_attributes = decrypt_aes_cbc(&encrypted_attributes, key, &[0; 16])?;
-    dbg!(&decrypted_attributes);
     let decrypted_attributes = String::from_utf8(decrypted_attributes)?;
     let decrypted_attributes = decrypted_attributes.trim_start_matches("MEGA");
     let decrypted_attributes = decrypted_attributes.trim_end_matches('\0');
