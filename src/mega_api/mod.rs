@@ -111,10 +111,7 @@ impl MegaApiClient {
         if let Some(file_response) = response_json.get(0) {
             let decoded_file_key = crypto::url_base64_to_bin(file_key)?;
 
-            dbg!(&file_response.at);
-            dbg!(&decoded_file_key);
             let decrypted_attributes = crypto::decrypt_file_attributes(&file_response.at, &decoded_file_key)?;
-            dbg!(&decrypted_attributes);
             let attributes: MegaFileAttribute = serde_json::from_str(&decrypted_attributes)?;
 
             let file_metadata = FileMetadata {
