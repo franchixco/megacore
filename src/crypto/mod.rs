@@ -244,7 +244,6 @@ pub fn rsa_decrypt(data: &[u8], _p: &BigUint, _q: &BigUint, _d: &BigUint) -> Res
 pub fn decrypt_file_attributes(encrypted_attributes: &str, key: &[u8]) -> Result<String> {
     let encrypted_attributes = url_base64_to_bin(encrypted_attributes)?;
     let decrypted_attributes = decrypt_aes_cbc(&encrypted_attributes, key, &[0; 16])?;
-    dbg!(&decrypted_attributes);
     let decrypted_attributes = String::from_utf8(decrypted_attributes)?;
     let decrypted_attributes = decrypted_attributes.trim_start_matches("MEGA");
     let decrypted_attributes = decrypted_attributes.trim_end_matches('\0');
