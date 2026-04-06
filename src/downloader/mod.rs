@@ -544,10 +544,24 @@ impl Downloader {
             final_file_path_str,
         );
 
-        if let Err(e) = file_assembler.assemble_and_decrypt() {
-            error!("Error al ensamblar y descifrar el archivo: {}", e);
-            self.download.status = DownloadStatus::Failed(e.to_string());
-            return Err(e);
+        let assemble_result = task::spawn_blocking(move || {
+            file_assembler.assemble_and_decrypt()
+        })
+        .await;
+
+        match assemble_result {
+            Ok(Ok(_)) => {}
+            Ok(Err(e)) => {
+                error!("Error al ensamblar y descifrar el archivo: {}", e);
+                self.download.status = DownloadStatus::Failed(e.to_string());
+                return Err(e);
+            }
+            Err(e) => {
+                let err_msg = format!("Error en la tarea de ensamblado: {}", e);
+                error!("{}", err_msg);
+                self.download.status = DownloadStatus::Failed(err_msg.clone());
+                return Err(anyhow::anyhow!(err_msg));
+            }
         }
 
         info!("Descarga completada para: {}", self.download.url);
