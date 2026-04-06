@@ -170,15 +170,15 @@ pub struct Downloader {
 }
 
 impl Downloader {
-    pub fn new(download: Download) -> Self {
-        let client = http::default_client("MegaBasterd Rust", 30);
+    pub fn new(download: Download) -> Result<Self> {
+        let client = http::default_client("MegaBasterd Rust", 30)?;
 
-        Self {
+        Ok(Self {
             download,
             slots: WORKERS_DEFAULT,
             client,
             api_client: None,
-        }
+        })
     }
 
     /// Establece el cliente de la API de MEGA
@@ -567,6 +567,6 @@ pub async fn download_file(url: &str, download_path: &str) -> Result<()> {
     };
     let session = Session::new();
     let api_client = MegaApiClient::new(session);
-    let mut downloader = Downloader::new(download).with_api_client(api_client);
+    let mut downloader = Downloader::new(download)?.with_api_client(api_client);
     downloader.download().await
 }
